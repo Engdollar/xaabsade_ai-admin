@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "175358001868",
+    "project_id": "xaabsade-ai-5b592",
+    "storage_bucket": "xaabsade-ai-5b592.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:175358001868:android:01ea4612ae38964f1cf869",
+        "android_client_info": {
+          "package_name": "com.example.kaaliye_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD42qhmt8krhJOEVm-zc0Fiuo43yh17k18"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:175358001868:android:d15cd7a561a76ad81cf869",
+        "android_client_info": {
+          "package_name": "com.example.xaabsade_ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD42qhmt8krhJOEVm-zc0Fiuo43yh17k18"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
