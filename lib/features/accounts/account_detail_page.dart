@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/account.dart';
@@ -6,6 +7,7 @@ import '../../data/models/device.dart';
 import '../../state/account_provider.dart';
 import '../../state/account_selection_provider.dart';
 import '../../state/device_provider.dart';
+import '../../state/subscription_provider.dart';
 import '../../widgets/glass_panel.dart';
 
 class AccountDetailPage extends StatelessWidget {
@@ -18,6 +20,7 @@ class AccountDetailPage extends StatelessWidget {
     final accountProvider = context.watch<AccountProvider>();
     final deviceProvider = context.watch<DeviceProvider>();
     final selectionProvider = context.watch<AccountSelectionProvider>();
+    final subscriptionProvider = context.watch<SubscriptionProvider>();
 
     Account? account;
     for (final item in accountProvider.accounts) {
@@ -84,6 +87,44 @@ class AccountDetailPage extends StatelessWidget {
                       Text('Account ID: ${account.accountId}'),
                       const SizedBox(height: 6),
                       Text('Active device: ${account.activeDeviceId}'),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Billing quick info',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Builder(
+                        builder: (context) {
+                          final bills = subscriptionProvider.billsForAccount(
+                            account!.id,
+                          );
+                          if (bills.isEmpty) {
+                            return const Text('No monthly bills found yet.');
+                          }
+
+                          return Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: bills.map((bill) {
+                              final month = _monthLabelFromKey(bill.monthKey);
+                              final paid = bill.isPaid ? 'Paid' : 'Unpaid';
+                              return Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.surface.withValues(alpha: 0.7),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text('$month • $paid • ${bill.amount}'),
+                              );
+                            }).toList(),
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -109,7 +150,8 @@ class AccountDetailPage extends StatelessWidget {
                         shrinkWrap: true,
                         physics: const NeverScrollableScrollPhysics(),
                         itemCount: deviceProvider.devices.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 8),
                         itemBuilder: (context, index) {
                           final device = deviceProvider.devices[index];
                           return _DeviceTile(
@@ -471,6 +513,19 @@ class AccountDetailPage extends StatelessWidget {
   }
 }
 
+String _monthLabelFromKey(String monthKey) {
+  final parts = monthKey.split('-');
+  if (parts.length != 2) {
+    return monthKey;
+  }
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  if (year == null || month == null || month < 1 || month > 12) {
+    return monthKey;
+  }
+  return DateFormat('MMMM yyyy').format(DateTime(year, month));
+}
+
 class _DeviceTile extends StatelessWidget {
   const _DeviceTile({
     required this.device,
@@ -491,7 +546,7 @@ class _DeviceTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

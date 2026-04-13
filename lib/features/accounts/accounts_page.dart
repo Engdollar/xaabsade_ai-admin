@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/models/account.dart';
 import '../../state/account_provider.dart';
 import '../../state/account_selection_provider.dart';
-import '../../state/device_provider.dart';
 import '../../state/subscription_provider.dart';
 import '../../widgets/glass_panel.dart';
 import 'account_detail_page.dart';
@@ -23,8 +22,9 @@ class _AccountsPageState extends State<AccountsPage> {
   Widget build(BuildContext context) {
     final accountProvider = context.watch<AccountProvider>();
     final selectionProvider = context.watch<AccountSelectionProvider>();
-    final deviceProvider = context.watch<DeviceProvider>();
     final subscriptionProvider = context.watch<SubscriptionProvider>();
+    final thisMonth = DateTime.now();
+    final thisMonthLabel = DateFormat('MMMM yyyy').format(thisMonth);
 
     final filteredAccounts = accountProvider.accounts.where((account) {
       final query = _searchQuery.trim().toLowerCase();
@@ -81,7 +81,7 @@ class _AccountsPageState extends State<AccountsPage> {
                         ),
                       ),
                       _StatusTag(
-                        label: subscriptionProvider.currentMonthLabel,
+                        label: thisMonthLabel,
                         icon: Icons.calendar_month,
                       ),
                     ],
@@ -101,11 +101,35 @@ class _AccountsPageState extends State<AccountsPage> {
                       ),
                       _MetricChip(
                         label: 'Paid',
-                        value: subscriptionProvider.paidCount.toString(),
+                        value: accountProvider.accounts
+                            .where(
+                              (account) =>
+                                  subscriptionProvider
+                                      .subscriptionForAccountInMonth(
+                                        accountDocId: account.id,
+                                        month: thisMonth,
+                                      )
+                                      ?.isPaid ==
+                                  true,
+                            )
+                            .length
+                            .toString(),
                       ),
                       _MetricChip(
                         label: 'Unpaid',
-                        value: subscriptionProvider.unpaidCount.toString(),
+                        value: accountProvider.accounts
+                            .where(
+                              (account) =>
+                                  subscriptionProvider
+                                      .subscriptionForAccountInMonth(
+                                        accountDocId: account.id,
+                                        month: thisMonth,
+                                      )
+                                      ?.isPaid !=
+                                  true,
+                            )
+                            .length
+                            .toString(),
                       ),
                     ],
                   ),
@@ -131,46 +155,47 @@ class _AccountsPageState extends State<AccountsPage> {
                       itemBuilder: (context, index) {
                         final account = filteredAccounts[index];
                         final subscription = subscriptionProvider
-                            .subscriptionForAccount(account.id);
+                            .subscriptionForAccountInMonth(
+                              accountDocId: account.id,
+                              month: thisMonth,
+                            );
                         final isSelected =
                             selectionProvider.accountId == account.id;
                         final surface = Theme.of(context).colorScheme.surface;
 
                         return ListTile(
                           tileColor: surface.withValues(alpha: 0.85),
+                          dense: true,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
+                          ),
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.12),
+                            child: Icon(
+                              Icons.business,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                           ),
                           title: Text(
                             account.businessName.isEmpty
                                 ? 'Unnamed account'
                                 : account.businessName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            'Owner: ${account.ownerName} • ${subscription?.isPaid == true ? 'Paid' : 'Unpaid'}',
+                            'Owner: ${account.ownerName}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          trailing: Wrap(
-                            spacing: 4,
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               _PaidBadge(isPaid: subscription?.isPaid == true),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined),
-                                tooltip: 'Edit',
-                                onPressed: () {
-                                  selectionProvider.select(account.id);
-                                  _showEditAccountDialog(
-                                    context,
-                                    account,
-                                    deviceProvider,
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                tooltip: 'Delete',
-                                onPressed: () =>
-                                    _confirmDeleteAccount(context, account),
-                              ),
+                              const SizedBox(height: 4),
                               const Icon(Icons.chevron_right),
                             ],
                           ),
@@ -194,172 +219,6 @@ class _AccountsPageState extends State<AccountsPage> {
         ),
       ),
     );
-  }
-
-  Future<void> _confirmDeleteAccount(
-    BuildContext context,
-    Account account,
-  ) async {
-    final provider = context.read<AccountProvider>();
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Delete account'),
-          content: Text('Delete ${account.businessName} and its data?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Delete'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldDelete == true) {
-      await provider.deleteAccount(account.id);
-    }
-  }
-
-  Future<void> _showEditAccountDialog(
-    BuildContext context,
-    Account account,
-    DeviceProvider deviceProvider,
-  ) async {
-    final provider = context.read<AccountProvider>();
-    final formKey = GlobalKey<FormState>();
-    final businessController = TextEditingController(
-      text: account.businessName,
-    );
-    final ownerController = TextEditingController(text: account.ownerName);
-    final activeDeviceController = TextEditingController(
-      text: account.activeDeviceId,
-    );
-    final devices = deviceProvider.devices;
-    final allowedDevices = account.allowedDeviceIds.toSet();
-    for (final device in devices) {
-      if (device.allowed) {
-        allowedDevices.add(device.deviceId);
-      }
-    }
-
-    final shouldUpdate = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              title: const Text('Update account'),
-              content: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextFormField(
-                        controller: businessController,
-                        decoration: const InputDecoration(
-                          labelText: 'Business name',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Business name is required.';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: ownerController,
-                        decoration: const InputDecoration(
-                          labelText: 'Owner name',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Owner name is required.';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: activeDeviceController,
-                        decoration: const InputDecoration(
-                          labelText: 'Active device id',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Allowed devices',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      if (deviceProvider.isLoading)
-                        const Center(child: CircularProgressIndicator()),
-                      if (!deviceProvider.isLoading && devices.isEmpty)
-                        const Text('No devices loaded for this account.'),
-                      if (devices.isNotEmpty)
-                        Column(
-                          children: devices.map((device) {
-                            final isAllowed = allowedDevices.contains(
-                              device.deviceId,
-                            );
-                            return SwitchListTile.adaptive(
-                              value: isAllowed,
-                              onChanged: (value) async {
-                                setState(() {
-                                  if (value) {
-                                    allowedDevices.add(device.deviceId);
-                                  } else {
-                                    allowedDevices.remove(device.deviceId);
-                                  }
-                                });
-                                await deviceProvider.updateDevice(device.id, {
-                                  'allowed': value,
-                                });
-                              },
-                              title: Text(device.deviceName),
-                              subtitle: Text(device.deviceId),
-                            );
-                          }).toList(),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () {
-                    if (formKey.currentState!.validate()) {
-                      Navigator.of(context).pop(true);
-                    }
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (shouldUpdate == true) {
-      await provider.updateAccount(account.id, {
-        'businessName': businessController.text.trim(),
-        'ownerName': ownerController.text.trim(),
-        'activeDeviceId': activeDeviceController.text.trim(),
-        'allowedDeviceIds': allowedDevices.toList(),
-      });
-    }
   }
 }
 

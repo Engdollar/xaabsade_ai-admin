@@ -82,6 +82,32 @@ class FirestoreRepository {
         .set(payload, SetOptions(merge: true));
   }
 
+  Future<void> deleteSubscriptionsForMonth(String monthKey) async {
+    final snapshot = await _subscriptionsRef
+        .where('monthKey', isEqualTo: monthKey)
+        .get();
+    if (snapshot.docs.isEmpty) {
+      return;
+    }
+
+    final batch = FirebaseFirestore.instance.batch();
+    for (final doc in snapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    await batch.commit();
+  }
+
+  Future<void> deleteSubscriptionForAccountAndMonth({
+    required String accountDocId,
+    required String monthKey,
+  }) async {
+    final docId = AccountSubscription.buildDocumentId(
+      accountDocId: accountDocId,
+      monthKey: monthKey,
+    );
+    await _subscriptionsRef.doc(docId).delete();
+  }
+
   Future<void> initializeSubscriptionsForMonth({
     required List<Account> accounts,
     required DateTime month,

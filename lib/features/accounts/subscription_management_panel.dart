@@ -36,7 +36,7 @@ class _SubscriptionManagementPanelState
             }),
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              labelText: 'Search account, owner, or account ID',
+              labelText: 'Search billed account, owner, or account ID',
             ),
           ),
           const SizedBox(height: 14),
@@ -47,12 +47,12 @@ class _SubscriptionManagementPanelState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Billing Management',
+                      'Billed Accounts Details',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Manage monthly billing status, initialize records, and export filtered Excel reports.',
+                      'Detailed account billing records for ${provider.currentMonthLabel}.',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ],
@@ -85,37 +85,6 @@ class _SubscriptionManagementPanelState
                 label: 'Collected',
                 value: _amountFormat.format(provider.totalCollected),
                 icon: Icons.payments_outlined,
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.icon(
-                onPressed: provider.isInitializing
-                    ? null
-                    : _openGenerateMonthSheet,
-                icon: provider.isInitializing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.playlist_add_check_circle_outlined),
-                label: const Text('Generate Month Billing'),
-              ),
-              FilledButton.tonalIcon(
-                onPressed: provider.isExporting ? null : _openExportSheet,
-                icon: provider.isExporting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.file_download_outlined),
-                label: const Text('Export Excel'),
               ),
             ],
           ),
@@ -174,6 +143,7 @@ class _SubscriptionManagementPanelState
                   amountFormat: _amountFormat,
                   onTogglePaid: () => _togglePaid(entry),
                   onEdit: () => _showEditDialog(entry),
+                  onDeleteBill: () => _deleteBill(entry),
                 );
               },
               separatorBuilder: (context, index) => const SizedBox(height: 10),
@@ -200,278 +170,6 @@ class _SubscriptionManagementPanelState
     return entry.businessName.toLowerCase().contains(query) ||
         entry.account.ownerName.toLowerCase().contains(query) ||
         entry.account.accountId.toLowerCase().contains(query);
-  }
-
-  Future<void> _openGenerateMonthSheet() async {
-    final provider = context.read<SubscriptionProvider>();
-    var selectedMonth = provider.currentMonth;
-    final amountController = TextEditingController(text: '0');
-
-    final shouldSubmit = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                8,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Generate Month Billing',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Create billing records for all accounts in the selected month.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 14),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.calendar_month_outlined),
-                    title: const Text('Billing month'),
-                    subtitle: Text(
-                      DateFormat('MMMM yyyy').format(selectedMonth),
-                    ),
-                    trailing: const Icon(Icons.edit_outlined),
-                    onTap: () async {
-                      final picked = await _pickMonth(selectedMonth);
-                      if (picked == null) {
-                        return;
-                      }
-                      setState(() {
-                        selectedMonth = picked;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: amountController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: const InputDecoration(
-                      labelText: 'Default amount per account',
-                      helperText: 'Used for newly created records only.',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Generate'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (shouldSubmit != true) {
-      return;
-    }
-
-    final amount = double.tryParse(amountController.text.trim()) ?? 0;
-
-    try {
-      await provider.initializeMonth(
-        month: selectedMonth,
-        defaultAmount: amount,
-      );
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Billing records generated for ${DateFormat('MMMM yyyy').format(selectedMonth)}.',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not generate month billing.')),
-      );
-    }
-  }
-
-  Future<void> _openExportSheet() async {
-    final provider = context.read<SubscriptionProvider>();
-    var selectedMonth = provider.currentMonth;
-    var scope = SubscriptionExportScope.all;
-
-    final shouldSubmit = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Padding(
-              padding: EdgeInsets.fromLTRB(
-                20,
-                8,
-                20,
-                MediaQuery.of(context).viewInsets.bottom + 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Export Billing Excel',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Choose month and status scope for export.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 14),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.calendar_month_outlined),
-                    title: const Text('Export month'),
-                    subtitle: Text(
-                      DateFormat('MMMM yyyy').format(selectedMonth),
-                    ),
-                    trailing: const Icon(Icons.edit_outlined),
-                    onTap: () async {
-                      final picked = await _pickMonth(selectedMonth);
-                      if (picked == null) {
-                        return;
-                      }
-                      setState(() {
-                        selectedMonth = picked;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<SubscriptionExportScope>(
-                    initialValue: scope,
-                    decoration: const InputDecoration(
-                      labelText: 'Status scope',
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: SubscriptionExportScope.all,
-                        child: Text('All (paid + unpaid)'),
-                      ),
-                      DropdownMenuItem(
-                        value: SubscriptionExportScope.paid,
-                        child: Text('Paid only'),
-                      ),
-                      DropdownMenuItem(
-                        value: SubscriptionExportScope.unpaid,
-                        child: Text('Unpaid only'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) {
-                        return;
-                      }
-                      setState(() {
-                        scope = value;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(context).pop(false),
-                          child: const Text('Cancel'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => Navigator.of(context).pop(true),
-                          child: const Text('Export'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-
-    if (shouldSubmit != true) {
-      return;
-    }
-
-    try {
-      final result = await provider.exportMonth(
-        month: selectedMonth,
-        scope: scope,
-      );
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Excel exported to ${result.filePath}')),
-      );
-    } on UnsupportedError catch (error) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message ?? 'Export is not supported.')),
-      );
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not export billing report.')),
-      );
-    }
-  }
-
-  Future<DateTime?> _pickMonth(DateTime initialMonth) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime(initialMonth.year, initialMonth.month, 1),
-      firstDate: DateTime(now.year - 6, 1, 1),
-      lastDate: DateTime(now.year + 6, 12, 31),
-      helpText: 'Select billing month',
-    );
-    if (picked == null) {
-      return null;
-    }
-    return DateTime(picked.year, picked.month);
   }
 
   Future<void> _togglePaid(SubscriptionViewEntry entry) async {
@@ -616,6 +314,51 @@ class _SubscriptionManagementPanelState
       );
     }
   }
+
+  Future<void> _deleteBill(SubscriptionViewEntry entry) async {
+    final provider = context.read<SubscriptionProvider>();
+    final monthLabel = provider.currentMonthLabel;
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete account bill'),
+          content: Text('Delete ${entry.businessName} bill for $monthLabel?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    try {
+      await provider.deleteAccountBillForCurrentMonth(entry.account.id);
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Account bill deleted.')));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete account bill.')),
+      );
+    }
+  }
 }
 
 class _SubscriptionEntryCard extends StatelessWidget {
@@ -624,12 +367,14 @@ class _SubscriptionEntryCard extends StatelessWidget {
     required this.amountFormat,
     required this.onTogglePaid,
     required this.onEdit,
+    required this.onDeleteBill,
   });
 
   final SubscriptionViewEntry entry;
   final NumberFormat amountFormat;
   final VoidCallback onTogglePaid;
   final VoidCallback onEdit;
+  final VoidCallback onDeleteBill;
 
   @override
   Widget build(BuildContext context) {
@@ -656,10 +401,16 @@ class _SubscriptionEntryCard extends StatelessWidget {
                   children: [
                     Text(
                       entry.businessName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: 4),
-                    Text('Owner: ${entry.account.ownerName}'),
+                    Text(
+                      'Owner: ${entry.account.ownerName}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     Text('Account ID: ${entry.account.accountId}'),
                   ],
                 ),
@@ -696,6 +447,11 @@ class _SubscriptionEntryCard extends StatelessWidget {
                 onPressed: onEdit,
                 icon: const Icon(Icons.edit_outlined),
                 label: const Text('Edit details'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onDeleteBill,
+                icon: const Icon(Icons.delete_outline),
+                label: const Text('Delete bill'),
               ),
             ],
           ),

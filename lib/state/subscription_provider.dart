@@ -63,6 +63,8 @@ class SubscriptionProvider extends ChangeNotifier {
   List<Account> _accounts = <Account>[];
   List<AccountSubscription> _subscriptions = <AccountSubscription>[];
   List<BillingMonthGroup> _billingMonthGroups = <BillingMonthGroup>[];
+  Map<String, Map<String, AccountSubscription>> _subscriptionsByMonth =
+      <String, Map<String, AccountSubscription>>{};
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isInitializing = false;
@@ -165,6 +167,27 @@ class SubscriptionProvider extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  AccountSubscription? subscriptionForAccountInMonth({
+    required String accountDocId,
+    required DateTime month,
+  }) {
+    final monthKey = DateFormat('yyyy-MM').format(_normalizeMonth(month));
+    return _subscriptionsByMonth[monthKey]?[accountDocId];
+  }
+
+  List<AccountSubscription> billsForAccount(String accountDocId) {
+    final items = <AccountSubscription>[];
+    for (final monthMap in _subscriptionsByMonth.values) {
+      final subscription = monthMap[accountDocId];
+      if (subscription != null) {
+        items.add(subscription);
+      }
+    }
+
+    items.sort((left, right) => right.monthKey.compareTo(left.monthKey));
+    return items;
   }
 
   Future<void> saveSubscription({
@@ -309,6 +332,34 @@ class SubscriptionProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteMonthBills(DateTime month) async {
+    final monthKey = DateFormat('yyyy-MM').format(_normalizeMonth(month));
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _repository.deleteSubscriptionsForMonth(monthKey);
+    } catch (_) {
+      _errorMessage = 'Failed to delete month bills.';
+      rethrow;
+    }
+  }
+
+  Future<void> deleteAccountBillForCurrentMonth(String accountDocId) async {
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      await _repository.deleteSubscriptionForAccountAndMonth(
+        accountDocId: accountDocId,
+        monthKey: currentMonthKey,
+      );
+    } catch (_) {
+      _errorMessage = 'Failed to delete account bill.';
+      rethrow;
+    }
+  }
+
   void _listen() {
     _subscription?.cancel();
     _isLoading = true;
@@ -333,12 +384,18 @@ class SubscriptionProvider extends ChangeNotifier {
     _monthsSubscription?.cancel();
     _monthsSubscription = _repository.watchAllSubscriptions().listen((items) {
       final monthMap = <String, _MonthAccumulator>{};
+      final monthAccountMap = <String, Map<String, AccountSubscription>>{};
       for (final item in items) {
         if (item.monthKey.isEmpty) {
           continue;
         }
 
         monthMap.putIfAbsent(item.monthKey, _MonthAccumulator.new).add(item);
+        final accountMap = monthAccountMap.putIfAbsent(
+          item.monthKey,
+          () => <String, AccountSubscription>{},
+        );
+        accountMap[item.accountDocId] = item;
       }
 
       final groups =
@@ -361,6 +418,7 @@ class SubscriptionProvider extends ChangeNotifier {
             ..sort((left, right) => right.month.compareTo(left.month));
 
       _billingMonthGroups = groups;
+      _subscriptionsByMonth = monthAccountMap;
       notifyListeners();
     });
   }

@@ -60,6 +60,13 @@ class _IoSubscriptionExportService implements SubscriptionExportService {
   }
 
   Future<Directory> _resolveExportDirectory() async {
+    if (Platform.isIOS) {
+      // iOS apps are sandboxed and cannot write directly to a public Downloads folder.
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+      await documentsDirectory.create(recursive: true);
+      return documentsDirectory;
+    }
+
     final publicDownloads = await _resolvePublicDownloadsDirectory();
     if (publicDownloads != null) {
       return publicDownloads;
@@ -71,9 +78,9 @@ class _IoSubscriptionExportService implements SubscriptionExportService {
       return downloadsDirectory;
     }
 
-    throw const FileSystemException(
-      'Could not access a public Downloads directory for export.',
-    );
+    final documentsDirectory = await getApplicationDocumentsDirectory();
+    await documentsDirectory.create(recursive: true);
+    return documentsDirectory;
   }
 
   Future<Directory?> _resolvePublicDownloadsDirectory() async {
